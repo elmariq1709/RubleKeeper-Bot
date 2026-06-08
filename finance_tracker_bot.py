@@ -53,6 +53,10 @@ def init_db():
     conn.commit()
     conn.close()
 
+def format_number(num):
+    """Форматирует число с запятыми и точкой"""
+    return f"{num:,.2f}".replace(',', ' ')
+
 def get_user(user_id):
     """Получает или создает пользователя"""
     conn = sqlite3.connect('finance.db')
@@ -171,18 +175,18 @@ def format_balance_message(user_id):
     conn.close()
     
     message = f"💰 <b>ВАШ ФИНАНСОВЫЙ СТАТУС</b>\n\n"
-    message += f"💵 Баланс: <b>{balance:.2f} ₽</b>\n"
+    message += f"💵 Баланс: <b>{format_number(balance)} ₽</b>\n"
     
     if budget > 0:
         remaining = budget - month_expenses
         percentage = (month_expenses / budget * 100) if budget > 0 else 0
         
-        message += f"📊 Месячный бюджет: <b>{budget:.2f} ₽</b>\n"
-        message += f"📉 Расходы в этом месяце: <b>{month_expenses:.2f} ₽</b>\n"
-        message += f"📈 Осталось: <b>{remaining:.2f} ₽</b> ({100-percentage:.0f}%)\n"
+        message += f"📊 Месячный бюджет: <b>{format_number(budget)} ₽</b>\n"
+        message += f"📉 Расходы в этом месяце: <b>{format_number(month_expenses)} ₽</b>\n"
+        message += f"📈 Осталось: <b>{format_number(remaining)} ₽</b> ({100-percentage:.0f}%)\n"
         
         if remaining < 0:
-            message += f"\n⚠️ <b>Бюджет превышен на {abs(remaining):.2f} ₽!</b>\n"
+            message += f"\n⚠️ <b>Бюджет превышен на {format_number(abs(remaining))} ₽!</b>\n"
     else:
         message += f"\n⚠️ Бюджет не установлен (используйте /set_budget)\n"
     
@@ -198,14 +202,10 @@ def create_pie_chart(user_id, days=None):
     categories = [e[0] for e in expenses]
     amounts = [e[1] for e in expenses]
     
-    # Преобразуем коды в названия
-    labels = [f"{list(CATEGORIES.values())[list(CATEGORIES.values()).index(cat)] if cat in CATEGORIES.values() else cat}" 
-              for cat in categories]
+    fig, ax = plt.subplots(figsize=(10, 8), facecolor='white')
+    colors = plt.cm.Set3(range(len(categories)))
     
-    fig, ax = plt.subplots(figsize=(10, 8))
-    colors = plt.cm.Set3(range(len(labels)))
-    
-    wedges, texts, autotexts = ax.pie(amounts, labels=labels, autopct='%1.1f%%',
+    wedges, texts, autotexts = ax.pie(amounts, labels=categories, autopct='%1.1f%%',
                                        colors=colors, startangle=90)
     
     for autotext in autotexts:
@@ -246,7 +246,7 @@ def create_bar_chart(user_id, days=7):
     expenses = [daily_data[d]['expense'] for d in dates]
     
     x = range(len(dates))
-    fig, ax = plt.subplots(figsize=(12, 6))
+    fig, ax = plt.subplots(figsize=(12, 6), facecolor='white')
     
     ax.bar([i - 0.2 for i in x], incomes, 0.4, label='Доходы', color='green', alpha=0.7)
     ax.bar([i + 0.2 for i in x], expenses, 0.4, label='Расходы', color='red', alpha=0.7)
@@ -282,7 +282,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     reply_markup = InlineKeyboardMarkup(keyboard)
     
     await update.message.reply_text(
-        "👋 Добро пожаловать в <b>Финансовый Трекер</b>! 💰\n\n"
+        "👋 Добро пожаловать в <b>RubleKeeper Bot</b>! 💰\n\n"
         "Я помогу вам отслеживать доходы и расходы, анализировать траты и управлять бюджетом.\n\n"
         "Что вы хотите сделать?",
         reply_markup=reply_markup,
@@ -329,7 +329,6 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE, da
     user_id = query.from_user.id
     
     if report_type == 'pie':
-        # График по категориям за месяц
         buf = create_pie_chart(user_id, 30)
         if buf:
             await query.message.reply_photo(buf, caption="📊 Расходы по категориям за месяц")
@@ -342,7 +341,6 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE, da
         return
     
     elif report_type == 'bar':
-        # График доходов/расходов по дням
         buf = create_bar_chart(user_id, days if days else 7)
         if buf:
             await query.message.reply_photo(buf, caption=f"📈 Доходы и расходы за последние {days or 7} дней")
@@ -354,7 +352,6 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE, da
         await query.edit_message_reply_markup(reply_markup)
         return
     
-    # Текстовый отчёт
     transactions = get_transactions(user_id, days)
     
     if not transactions:
@@ -374,16 +371,16 @@ async def generate_report(update: Update, context: ContextTypes.DEFAULT_TYPE, da
         period = "всего"
     
     message = f"📊 <b>ОТЧЁТ {period.upper()}</b>\n\n"
-    message += f"✅ Доходы: <b>{total_income:.2f} ₽</b>\n"
-    message += f"❌ Расходы: <b>{total_expense:.2f} ₽</b>\n"
-    message += f"💹 Итого: <b>{total_income - total_expense:.2f} ₽</b>\n\n"
+    message += f"✅ Доходы: <b>{format_number(total_income)} ₽</b>\n"
+    message += f"❌ Расходы: <b>{format_number(total_expense)} ₽</b>\n"
+    message += f"💹 Итого: <b>{format_number(total_income - total_expense)} ₽</b>\n\n"
     
-    message += "<b>📝 Транзакции:</b>\n\n"
+    message += "<b>📝 Последние транзакции:</b>\n\n"
     
-    for t in transactions[:10]:  # Показываем последние 10
+    for t in transactions[:10]:
         date = datetime.fromisoformat(t[5]).strftime('%d.%m %H:%M')
         icon = "✅" if t[3] == 'income' else "❌"
-        message += f"{icon} {date} | {t[4]}: <b>{t[2]:.2f} ₽</b>\n"
+        message += f"{icon} {date} | {t[4]}: <b>{format_number(t[2])} ₽</b>\n"
     
     if len(transactions) > 10:
         message += f"\n... и ещё {len(transactions) - 10} транзакций"
@@ -423,7 +420,7 @@ async def add_income_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     await query.edit_message_text(
         "💵 <b>ДОБАВИТЬ ДОХОД</b>\n\n"
-        "Введите сумму доход (только цифры):\n\n"
+        "Введите сумму дохода (только цифры):\n\n"
         "Например: <code>5000</code>",
         parse_mode="HTML"
     )
@@ -464,11 +461,10 @@ async def amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         add_transaction(user_id, amount, trans_type, category)
         
         await update.message.reply_text(
-            f"✅ <b>{category}</b> на сумму <b>{amount:.2f} ₽</b> добавлен(а)!",
+            f"✅ <b>{category}</b> на сумму <b>{format_number(amount)} ₽</b> добавлен(а)!",
             parse_mode="HTML"
         )
         
-        # Показываем баланс
         message = format_balance_message(user_id)
         
         keyboard = [
@@ -496,7 +492,7 @@ async def set_budget_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     message = f"💵 <b>УСТАНОВИТЬ МЕСЯЧНЫЙ БЮДЖЕТ</b>\n\n"
     if current_budget > 0:
-        message += f"Текущий бюджет: <b>{current_budget:.2f} ₽</b>\n\n"
+        message += f"Текущий бюджет: <b>{format_number(current_budget)} ₽</b>\n\n"
     
     message += "Введите желаемый месячный бюджет (только цифры):\n\n" \
               "Например: <code>50000</code>"
@@ -518,11 +514,10 @@ async def budget_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
         set_monthly_budget(user_id, budget)
         
         await update.message.reply_text(
-            f"✅ <b>Месячный бюджет установлен: {budget:.2f} ₽</b>",
+            f"✅ <b>Месячный бюджет установлен: {format_number(budget)} ₽</b>",
             parse_mode="HTML"
         )
         
-        # Показываем баланс
         message = format_balance_message(user_id)
         
         keyboard = [
@@ -595,21 +590,15 @@ def main():
     
     init_db()
     
-    # ЗАМЕНИТЕ НА ВАШ ТОКЕН!
     TOKEN = "8745855289:AAG8IhQbJ4djiChC8uT5qQTL2OWg4t3qQmQ"
     
     application = Application.builder().token(TOKEN).build()
     
-    # Обработчик главного меню
     application.add_handler(CommandHandler("start", start))
-    
-    # Callback обработчик
     application.add_handler(CallbackQueryHandler(callback_handler))
-    
-    # Обработчики текстового ввода
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, amount_input))
     
-    print("🤖 Финансовый трекер запущен! Нажмите Ctrl+C для остановки.")
+    print("🤖 RubleKeeper Bot запущен! Нажмите Ctrl+C для остановки.")
     application.run_polling()
 
 if __name__ == '__main__':
